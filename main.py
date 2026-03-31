@@ -1,11 +1,18 @@
+
 import hashlib
 import zlib
 import os
 import tempfile
 import configparser
 import sys
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Set, Tuple
 from abc import ABC, abstractmethod
+
+
+# -----------------------------------------------------------------------------
+# utility helpers
+# -----------------------------------------------------------------------------
+
 def compute_file_hash(filepath: str, algorithm: str = 'sha1', BUFF_SIZE: int = 65536) -> str:
     """Compute the hash of a file using the specified algorithm.
     
@@ -187,17 +194,24 @@ def repo_find(path: str = ".", required: bool = True) -> Optional['GitRepository
 
 
 
-    
-    
-    
+# -----------------------------------------------------------------------------
+# repository core classes
+# -----------------------------------------------------------------------------
+
 class GitRepository(object):
     """A git repository"""
 
-    worktree = None
-    gitdir = None
-    conf = None
+    worktree: str = ''
+    gitdir: str = ''
+    conf: configparser.ConfigParser
 
-    def __init__(self, path, force=False):
+    def __init__(self, path: str, force: bool = False) -> None:
+        """Initialize a GitRepository.
+
+        Args:
+            path: Working tree path.
+            force: If True, allow repository creation even if .git is missing.
+        """
         self.worktree = path
         self.gitdir = os.path.join(path, ".gitsh")
 
@@ -221,23 +235,23 @@ class GitRepository(object):
             
 class GitObject(ABC):
 
-    def __init__(self, data=None):
+    def __init__(self, data: Optional[bytes] = None) -> None:
         if data is not None:
             self.deserialize(data)
         else:
             self.init()
 
     @abstractmethod
-    def serialize(self, repo):
-        """Must be implemented by subclasses"""
-        pass
+    def serialize(self) -> bytes:
+        """Must be implemented by subclasses."""
+        ...
 
     @abstractmethod
-    def deserialize(self, data):
-        """Must be implemented by subclasses"""
-        pass
+    def deserialize(self, data: bytes) -> None:
+        """Must be implemented by subclasses."""
+        ...
 
-    def init(self):
+    def init(self) -> None:
         pass  # default implementation
     
     
@@ -252,17 +266,26 @@ class GitBlob(GitObject):
         
         
     
-class GitTreeLeaf (object) : 
-    def __init__(self,mode ,path,sha):
-        self.mode=mode
-        self.path= path
-        self.sha= sha
+class GitTreeLeaf(object):
+    def __init__(self, mode: bytes, path: str, sha: str) -> None:
+        self.mode: bytes = mode
+        self.path: str = path
+        self.sha: str = sha
         
         
-def tree_parse_one(raw , start=0) : 
+def tree_parse_one(raw: bytes, start: int = 0) -> Tuple[int, GitTreeLeaf]:
+    """Parse a single tree entry from raw tree object bytes.
+
+    Args:
+        raw: Raw tree data.
+        start: Start position in raw bytes.
+
+    Returns:
+        Tuple of (next position, GitTreeLeaf instance).
+    """
     # find the space terminator of the mode 
     
-    x = raw.find(b' ' , start)
+    x = raw.find(b' ', start)
     assert x-start == 5 or x-start == 6
     
     mode = raw[start : x]
@@ -284,36 +307,44 @@ def tree_parse_one(raw , start=0) :
     
     return y+21 , GitTreeLeaf(mode, path.decode('utf8'),sha)
 
-def tree_parse(raw):
-    pos = 0 
-    max= len(raw)
-    ret =list()
-    while pos < max : 
-        pos, data = tree_parse_one(raw,pos)
+def tree_parse(raw: bytes) -> List[GitTreeLeaf]:
+    """Parse raw tree data into a list of GitTreeLeaf entries."""
+    pos = 0
+    max_len = len(raw)
+    ret: List[GitTreeLeaf] = []
+    while pos < max_len:
+        pos, data = tree_parse_one(raw, pos)
         ret.append(data)
-        
+
     return ret
 
-def tree_leaf_sort_key(leaf):
+def tree_leaf_sort_key(leaf: GitTreeLeaf) -> str:
+    """Sort tree leaves according to Git tree ordering rules."""
     if leaf.mode.startswith(b"4"):
         return leaf.path + "/"
     else:
         return leaf.path
 
-def tree_serialize(obj):
+def tree_serialize(obj: 'GitTree') -> bytes:
+    """Serialize a GitTree object to raw bytes."""
     obj.items.sort(key=tree_leaf_sort_key)
     ret = b''
-    
+
     for i in obj.items:
         ret += i.mode
         ret += b' '
         ret += i.path.encode("utf8")
         ret += b'\x00'
-        sha = int(i.sha , 16)
-        ret += sha.to_bytes(20 , byteorder="big")
-        
+        sha = int(i.sha, 16)
+        ret += sha.to_bytes(20, byteorder="big")
+
     return ret
-    
+
+
+# -----------------------------------------------------------------------------
+# GitTree class and tree helpers
+# -----------------------------------------------------------------------------
+
 class GitTree(GitObject):
     fmt=b'tree'
 
@@ -327,16 +358,16 @@ class GitTree(GitObject):
         self.items = list()
         
 
-def ls_tree(repo , ref , recursive = None , prefix=""):
-    sha = object_find(repo ,ref ,fmt =b'tree')
-    obj = object_read(repo,sha)
-    
-    for item in obj.items : 
-        if len(item.mode) == 5 :
+def ls_tree(repo: 'GitRepository', ref: str, recursive: Optional[bool] = None, prefix: str = "") -> None:
+    """List tree contents recursively or non-recursively."""
+    sha = object_find(repo, ref, fmt=b'tree')
+    obj = object_read(repo, sha)
+
+    for item in obj.items:
+        if len(item.mode) == 5:
             type = item.mode[0:1]
         else:
-            type = item.mode[0:2]
-            
+            type = item.mode[0:2]            
             
         match type:
             case b'04': type = "tree"
@@ -354,14 +385,20 @@ def ls_tree(repo , ref , recursive = None , prefix=""):
 
 
 class GitTag(GitObject):
-    fmt=b'tag'
+    fmt = b'tag'
 
-    def serialize(self):
-        pass
+    def serialize(self) -> bytes:
+        """Serialize tag object to bytes."""
+        return b''
 
-    def deserialize(self, data):
-        pass
+    def deserialize(self, data: bytes) -> None:
+        """Deserialize tag object from bytes."""
+        self.data = data
 
+
+# -----------------------------------------------------------------------------
+# storage helpers (compression and object I/O)
+# -----------------------------------------------------------------------------
 
 def _read_decompress(path: str, chunk_size: int = 65536) -> bytes:
     """Decompress a file in chunks to avoid loading full file at once.
@@ -512,7 +549,7 @@ def cat_file(repo: 'GitRepository', obj: str, fmt: Optional[bytes] = None) -> No
 # def object_find(repo , name , fmt= None , follow = None):
 #     return name
 import re
-def object_find(repo: 'GitRepository', name: str, fmt: Optional[bytes] = None, follow: bool = True) -> str:
+def object_find(repo: 'GitRepository', name: str, fmt: Optional[bytes] = None, follow: bool = True) -> Optional[str]:
     """Find git object by name, optionally filtering by type.
     
     Args:
@@ -826,6 +863,15 @@ def log_graphviz(repo: 'GitRepository', sha: str, seen: Optional[set] = None) ->
         print(f"  c_{sha} -> c_{p}")
         log_graphviz(repo, p, seen)
 
-repo = GitRepository("D:/coding/.BackEnd/gitsh/",True)
 
-log_graphviz(repo, object_find(repo, 'HEAD'), set())
+# -----------------------------------------------------------------------------
+# entry point
+# -----------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    repo = repo_find(".", required=True)
+    if repo is None:
+        raise SystemExit("No repository found")
+
+    log_graphviz(repo, object_find(repo, 'HEAD'), set())
+
