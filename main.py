@@ -186,15 +186,7 @@ class GitBlob(GitObject):
     def deserialize(self, data):
         self.blobdata = data
         
-        
-class GitCommit(GitObject):
-    fmt=b'commit'
 
-    def serialize(self):
-        pass
-    def deserialize(self, data):
-        pass
-    
     
     
 class GitTree(GitObject):
@@ -340,3 +332,104 @@ def object_hash(fd , fmt , repo=None):
     return object_write(obj,repo)
 
 
+
+        
+class GitCommit(GitObject):
+    fmt=b'commit'
+
+    def serialize(self):
+        return kvlm_serialize(self.kvlm)
+    
+    def deserialize(self, data):
+        self.kvlm = kvlm_parse(data)
+    
+    def init(self):
+        self.kvlm = dict()
+        
+def kvlm_parse(raw , start =0 , dct= None):
+    if not dct:
+        
+        dct = dict()
+        
+        
+    # search for next space and newline
+    spc = raw.find(b' ' , start)
+    nl = raw.find(b'\n' , start)
+    
+    # base case 
+    # If newline appears first (or there's no space at all, in which
+    # case find returns -1), we assume a blank line.  A blank line
+    # means the remainder of the data is the message.  We store it in
+    # the dictionary, with None as the key, and return.
+    
+    if (spc < 0 ) or (nl < spc):
+        assert nl == start 
+        dct[None] = raw[start+1 : ]
+        return dct
+    
+    # recursive  build to the dict with key value
+    
+    key = raw[start : spc]
+    
+    # find the end of the value
+    end = start
+    while True : 
+        end = raw.find(b'\n', end+1)
+        if raw[end+1] != ord(' ')  : break # If a line starts with a space → it's a continuation of the previous value
+       
+    # Grab the value
+    # Also, drop the leading space on continuation lines
+    value = raw[spc+1 :end].replace(b'\n ' , b'\n')
+    
+    # don't overwrite existing data
+    if key in dct:
+        if type(dct[key]) == list:
+            dct[key].append(value)
+            
+        else:
+            dct[key] = [dct[key],value]
+    else:
+        dct[key] = value
+        
+        
+    return kvlm_parse(raw, start=end+1 , dct= dct)
+
+
+def kvlm_serialize(kvlm):
+    ret =b''
+    
+    # output fileds (like tree <sha1> )
+    for k in kvlm.keys():
+        # skip message 
+        if k == None : continue
+        val = kvlm[k]
+        
+        # normalize to a list 
+        if type(val) != list:
+            val = [val]
+            
+        for v in val :
+            ret += k + b' ' + (v.replace(b'\n' , b'\n ') ) + b'\n'
+            
+    # append message
+    ret += b'\n' + kvlm[None]
+    
+    return ret
+
+raw = b"""tree abc123
+parent def456
+author Omar Mohamed <omar@email.com> 1710000000 +0200
+committer Omar Mohamed <omar@email.com> 1710000000 +0200
+
+Initial commit
+"""
+
+
+commit = GitCommit()
+commit.deserialize(raw)
+
+print(commit.kvlm)
+# Serialize back
+new_raw = commit.serialize()
+
+print(raw == new_raw)
