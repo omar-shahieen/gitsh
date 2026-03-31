@@ -199,7 +199,7 @@ class GitRepository(object):
 
     def __init__(self, path, force=False):
         self.worktree = path
-        self.gitdir = os.path.join(path, ".git")
+        self.gitdir = os.path.join(path, ".gitsh")
 
         if not (force or os.path.isdir(self.gitdir)):
             raise Exception(f"Not a Git repository {path}")
@@ -250,19 +250,109 @@ class GitBlob(GitObject):
     def deserialize(self, data):
         self.blobdata = data
         
-
+        
     
+class GitTreeLeaf (object) : 
+    def __init__(self,mode ,path,sha):
+        self.mode=mode
+        self.path= path
+        self.sha= sha
+        
+        
+def tree_parse_one(raw , start=0) : 
+    # find the space terminator of the mode 
+    
+    x = raw.find(b' ' , start)
+    assert x-start == 5 or x-start == 6
+    
+    mode = raw[start : x]
+    
+    if len(mode) == 5 :
+        mode = b'0' + mode
+        
+    
+    # find null terminator of the path
+    
+    y= raw.find(b'\x00' , x)
+    path = raw[x+1:y]
+    
+    
+    raw_sha = int.from_bytes(raw[y+1:y+21] , "big")
+    # and convert it into an hex string, padded to 40 chars
+    # with zeros if needed.
+    sha = format(raw_sha , "040x")
+    
+    return y+21 , GitTreeLeaf(mode, path.decode('utf8'),sha)
+
+def tree_parse(raw):
+    pos = 0 
+    max= len(raw)
+    ret =list()
+    while pos < max : 
+        pos, data = tree_parse_one(raw,pos)
+        ret.append(data)
+        
+    return ret
+
+def tree_leaf_sort_key(leaf):
+    if leaf.mode.startswith(b"4"):
+        return leaf.path + "/"
+    else:
+        return leaf.path
+
+def tree_serialize(obj):
+    obj.items.sort(key=tree_leaf_sort_key)
+    ret = b''
+    
+    for i in obj.items:
+        ret += i.mode
+        ret += b' '
+        ret += i.path.encode("utf8")
+        ret += b'\x00'
+        sha = int(i.sha , 16)
+        ret += sha.to_bytes(20 , byteorder="big")
+        
+    return ret
     
 class GitTree(GitObject):
     fmt=b'tree'
 
     def serialize(self):
-        pass
+        return tree_serialize(self)
 
     def deserialize(self, data):
-        pass
+        self.items = tree_parse(data)
+    
+    def init(self):
+        self.items = list()
         
-        
+
+def ls_tree(repo , ref , recursive = None , prefix=""):
+    sha = object_find(repo ,ref ,fmt =b'tree')
+    obj = object_read(repo,sha)
+    
+    for item in obj.items : 
+        if len(item.mode) == 5 :
+            type = item.mode[0:1]
+        else:
+            type = item.mode[0:2]
+            
+            
+        match type:
+            case b'04': type = "tree"
+            case b'10': type = "blob" # A regular file.
+            case b'12': type = "blob" # A symlink. Blob contents is link target.
+            case b'16': type = "commit" # A submodule   
+            case _: raise Exception(f"Weird tree leaf mode {item.mode}")
+            
+        if not (recursive and type=='tree'): # This is a leaf
+            print(f"{'0' * (6 - len(item.mode)) + item.mode.decode('ascii')} {type} {item.sha}\t{os.path.join(prefix, item.path)}")
+        else:
+            ls_tree(repo, item.sha, recursive, os.path.join(prefix, item.path))
+
+         
+
+
 class GitTag(GitObject):
     fmt=b'tag'
 
