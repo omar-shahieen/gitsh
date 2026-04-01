@@ -173,7 +173,8 @@ def object_find(repo: GitRepository, name: str, fmt: Optional[bytes] = None, fol
         raise Exception(f"No such reference {name}.")
 
     if len(sha) > 1:
-        raise Exception(f"Ambiguous reference {name}: Candidates are:\n - {'\n - '.join(sha)}.")
+        candidates_str = "\n - ".join(sha)
+        raise Exception(f"Ambiguous reference {name}: Candidates are:\n - {candidates_str}.")
 
     sha = sha[0]
 
