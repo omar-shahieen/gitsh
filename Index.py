@@ -1,18 +1,30 @@
 import json
 import os
-from typing import Dict, List, Optional, Tuple
-from Utils import compute_file_hash
-
+from typing import Dict, List
+from storage import compute_file_hash
+from repository import GitRepository ,repo_file
 
 class GitIndexEntry:
     """Represents a single file entry in the index (staging area)."""
     
     def __init__(self, path: str, mode: str, sha: str) -> None:
+        """Initialize an index entry.
+
+        Args:
+            path: The file path.
+            mode: The file mode.
+            sha: The SHA hash.
+        """
         self.path = path
         self.mode = mode  # file mode (e.g., "100644" for regular file)
         self.sha = sha    # SHA-1 hash of file content
     
     def to_dict(self) -> Dict:
+        """Convert the entry to a dictionary.
+
+        Returns:
+            A dictionary representation.
+        """
         return {
             "path": self.path,
             "mode": self.mode,
@@ -21,6 +33,14 @@ class GitIndexEntry:
     
     @staticmethod
     def from_dict(data: Dict) -> "GitIndexEntry":
+        """Create an entry from a dictionary.
+
+        Args:
+            data: The dictionary data.
+
+        Returns:
+            A GitIndexEntry instance.
+        """
         return GitIndexEntry(data["path"], data["mode"], data["sha"])
 
 
@@ -28,12 +48,16 @@ class GitIndex:
     """Represents the git index (staging area)."""
     
     def __init__(self, repo: "GitRepository") -> None:
+        """Initialize the index for a repository.
+
+        Args:
+            repo: The Git repository instance.
+        """
         self.repo = repo
         self.entries: Dict[str, GitIndexEntry] = {}
     
     def load(self) -> None:
         """Load index from .gitsh/index file."""
-        from Repository import repo_file
         
         index_path = repo_file(self.repo, "index")
         if not index_path or not os.path.exists(index_path):
@@ -52,7 +76,6 @@ class GitIndex:
     
     def save(self) -> None:
         """Save index to .gitsh/index file."""
-        from Repository import repo_file
         
         index_path = repo_file(self.repo, "index", mkdir=True)
         if not index_path:

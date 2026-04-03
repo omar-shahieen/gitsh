@@ -1,29 +1,17 @@
-from typing import Any, Dict, Optional
-
-from Blob import GitObject
-from Utils import kvlm_parse, kvlm_serialize  
-from Repository import object_read , repo_find,object_find
-import os
-
-
-
-class GitCommit(GitObject):
-    fmt = b"commit"
-
-    def serialize(self):
-        return kvlm_serialize(self.kvlm)
-
-    def deserialize(self, data):
-        self.kvlm = kvlm_parse(data)
-
-    def init(self):
-        self.kvlm = dict()
+from ..repository import GitRepository
+from ..storage import object_read
+from typing import Optional
 
 
 
 def log_graphviz(repo: "GitRepository", sha: str, seen: Optional[set] = None) -> None:
-    from Repository import object_read
+    """Generate GraphViz dot format for commit graph.
 
+    Args:
+        repo: The repository.
+        sha: The commit SHA.
+        seen: Set of already processed SHAs.
+    """
     if seen is None:
         seen = set()
     if sha in seen:
@@ -57,25 +45,3 @@ def log_graphviz(repo: "GitRepository", sha: str, seen: Optional[set] = None) ->
         log_graphviz(repo, p, seen)
 
 
-
-def tree_checkout(repo , tree  , path):
-    
-    for item in tree.items:
-        
-        obj = object_read(repo,item.sha)
-        
-        dest = os.path.join(path, item.path)
-        
-        if obj.fmt == b'tree':
-            os.mkdir(dest)
-            tree_checkout(repo,obj,dest)
-            
-            
-        elif obj.fmt == b'blob':
-            with open(dest, 'wb') as f:
-                f.write(obj.blobdata)
-                
-                
-            
-            
-            
