@@ -1,16 +1,66 @@
 
 import hashlib
-import os ,re
+import os ,re,tempfile,zlib
 from typing import Optional, List,Any
 
-from storage.compression import read_decompress, write_compressed
+from .repository import GitRepository, repo_file,repo_dir , repo_find
 from objects import GitObject, get_object_class, initialize_registry
 
-from repository import GitRepository, repo_file,repo_dir
 
 # Initialize the object registry on import
 initialize_registry()
 
+
+
+
+def _read_decompress(path: str, chunk_size: int = 65536) -> bytes:
+    """Read and decompress a zlib-compressed file.
+    
+    Args:
+        path: Path to the compressed file.
+        chunk_size: Size of chunks to read at a time.
+    
+    Returns:
+        Decompressed bytes.
+    """
+    decompressor = zlib.decompressobj()
+    parts = []
+
+    with open(path, "rb") as f:
+        while chunk := f.read(chunk_size):
+            parts.append(decompressor.decompress(chunk))
+        parts.append(decompressor.flush())
+
+    return b"".join(parts)
+
+
+def _write_compressed(path: str, header: bytes, data: bytes, chunk_size: int = 65536) -> None:
+    """Write and compress data to a zlib file atomically.
+    
+    Args:
+        path: Path where the compressed file will be written.
+        header: Header bytes to write first.
+        data: Data bytes to compress and write.
+        chunk_size: Size of chunks to compress at a time.
+    """
+    dir_path = os.path.dirname(path)
+    compressor = zlib.compressobj()
+
+    with tempfile.NamedTemporaryFile(dir=dir_path, delete=False) as tmp:
+        tmp_path = tmp.name
+        try:
+            tmp.write(compressor.compress(header))
+
+            view = memoryview(data)
+            for i in range(0, len(data), chunk_size):
+                tmp.write(compressor.compress(view[i : i + chunk_size]))
+
+            tmp.write(compressor.flush())
+        except:
+            os.unlink(tmp_path)
+            raise
+
+    os.replace(tmp_path, path)
 
 def object_write(obj: GitObject, repo: Optional[GitRepository] = None) -> str:
     """Write a Git object to the repository.
@@ -32,7 +82,7 @@ def object_write(obj: GitObject, repo: Optional[GitRepository] = None) -> str:
     if repo:
         path = repo_file(repo, "objects", sha[0:2], sha[2:], mkdir=True)
         if not os.path.exists(path):
-            write_compressed(path, header, data)
+            _write_compressed(path, header, data)
     return sha
 
 
@@ -51,7 +101,7 @@ def object_read(repo: GitRepository, sha: str) -> Optional[GitObject]:
     if not os.path.isfile(path):
         return None
 
-    raw = read_decompress(path)
+    raw = _read_decompress(path)
     x = raw.find(b" ")
     fmt = raw[0:x]
 
@@ -80,36 +130,38 @@ def object_find(repo: GitRepository, name: str, fmt: Optional[bytes] = None, fol
     Returns:
         The SHA hash, or None.
     """
-    sha = object_resolve(repo, name)
-
-    if not sha:
+    
+    sha_candidates = object_resolve(repo , name)
+    
+    if not sha_candidates:
         raise Exception(f"No such reference {name}.")
-
-    if len(sha) > 1:
-        candidates_str = "\n - ".join(sha)
-        raise Exception(f"Ambiguous reference {name}: Candidates are:\n - {candidates_str}.")
-
-    sha = sha[0]
-
-    if not fmt:
+    
+    if len(sha_candidates) > 1 :
+        raise Exception(f"Ambiguous reference {name}: Candidates are:\n - {'\n - '.join(sha_candidates)}.")
+    
+    sha =sha_candidates[0]
+    
+    
+    if not fmt : 
         return sha
 
-    while True:
-        obj = object_read(repo, sha)
-
-        if obj.fmt == fmt:
+    while True :
+        obj = object_read(repo , sha)
+        
+        if obj.fmt == fmt :
             return sha
-
-        if not follow:
-            return None
-
-        if obj.fmt == b"tag":
-            sha = obj.kvlm[b"object"].decode("ascii")
-        elif obj.fmt == b"commit" and fmt == b"tree":
-            sha = obj.kvlm[b"tree"].decode("ascii")
+        
+        if not follow :
+            return None 
+        
+        if obj.fmt == b'tag':
+            sha = obj.kvlm[b"object"].decode('ascii') # tag's sha
+        elif obj.fmt == b'commit' and fmt ==b'tree':
+            sha =obj.kvlm[b'tree'].decode("ascii")
+            
         else:
-            return None
-
+            return None 
+    
 
 def object_resolve(repo: GitRepository, name: str) -> Optional[List[str]]:
     """Resolve a name to possible SHA hashes.
@@ -122,39 +174,51 @@ def object_resolve(repo: GitRepository, name: str) -> Optional[List[str]]:
         List of candidate SHAs, or None.
     """
     from reference import ref_resolve
-    
-    candidates = list()
+
+    candidates= list()
     hashRE = re.compile(r"^[0-9A-Fa-f]{4,40}$")
-
+    
+    
+    # empty string? Abort
     if not name.strip():
-        return None
-
+        return None 
+    
+    # head is nonambiguous
     if name == "HEAD":
-        return [ref_resolve(repo, "HEAD")]
-
+        return [ref_resolve(repo , "HEAD")]
+    
+    # if it's a hex string , try for hash
     if hashRE.match(name):
+        
         name = name.lower()
-        prefix = name[0:2]
-        path = repo_dir(repo, "objects", prefix, mkdir=False)
-        if path:
+        
+        prefix = name[:2]
+        path = repo_dir(repo, "objects" , prefix , mkdir=False)
+        
+        if path :
             rem = name[2:]
+            
             for f in os.listdir(path):
                 if f.startswith(rem):
                     candidates.append(prefix + f)
-
-    as_tag = ref_resolve(repo, "refs/tags/" + name)
-    if as_tag:
+                
+    # is there tags  ? 
+    as_tag = ref_resolve(repo , "refs/tags/" + name)
+    if as_tag : 
         candidates.append(as_tag)
-
-    as_branch = ref_resolve(repo, "refs/heads/" + name)
+        
+    # is there branches ? 
+    as_branch = ref_resolve(repo , "refs/heads/" + name)
     if as_branch:
         candidates.append(as_branch)
-
-    as_remote_branch = ref_resolve(repo, "refs/remotes/" + name)
+        
+    # is there remote branches 
+    as_remote_branch = ref_resolve(repo , "repo/remotes/" + name)
     if as_remote_branch:
         candidates.append(as_remote_branch)
-
+        
     return candidates
+
 
 
 def object_hash(fd: Any, fmt: bytes, repo: Optional[GitRepository] = None) -> str:

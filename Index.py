@@ -2,7 +2,7 @@ import json
 import os
 from typing import Dict, List
 from storage import compute_file_hash
-from repository import GitRepository ,repo_file
+from storage.repository import GitRepository ,repo_file
 
 class GitIndexEntry:
     """Represents a single file entry in the index (staging area)."""
