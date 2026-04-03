@@ -1,17 +1,10 @@
 from typing import Any, Dict, Optional
 
 from Blob import GitObject
-from Utils import kvlm_parse, kvlm_serialize
+from Utils import kvlm_parse, kvlm_serialize  
+from Repository import object_read , repo_find,object_find
+import os
 
-
-class GitTag(GitObject):
-    fmt = b"tag"
-
-    def serialize(self) -> bytes:
-        return b""
-
-    def deserialize(self, data: bytes) -> None:
-        self.data = data
 
 
 class GitCommit(GitObject):
@@ -25,6 +18,7 @@ class GitCommit(GitObject):
 
     def init(self):
         self.kvlm = dict()
+
 
 
 def log_graphviz(repo: "GitRepository", sha: str, seen: Optional[set] = None) -> None:
@@ -61,3 +55,27 @@ def log_graphviz(repo: "GitRepository", sha: str, seen: Optional[set] = None) ->
         p = p.decode("ascii")
         print(f"  c_{sha} -> c_{p}")
         log_graphviz(repo, p, seen)
+
+
+
+def tree_checkout(repo , tree  , path):
+    
+    for item in tree.items:
+        
+        obj = object_read(repo,item.sha)
+        
+        dest = os.path.join(path, item.path)
+        
+        if obj.fmt == b'tree':
+            os.mkdir(dest)
+            tree_checkout(repo,obj,dest)
+            
+            
+        elif obj.fmt == b'blob':
+            with open(dest, 'wb') as f:
+                f.write(obj.blobdata)
+                
+                
+            
+            
+            

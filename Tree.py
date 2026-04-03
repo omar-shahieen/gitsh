@@ -1,7 +1,7 @@
 import os
 from typing import List, Optional, Tuple
-
 from Blob import GitObject
+
 
 
 class GitTreeLeaf(object):
@@ -73,16 +73,16 @@ class GitTree(GitObject):
 
 
 def ls_tree(repo: "GitRepository", ref: str, recursive: Optional[bool] = None, prefix: str = "") -> None:
-    from Repository import object_find, object_read
+    from Repository import  object_find, object_read
 
     sha = object_find(repo, ref, fmt=b"tree")
     obj = object_read(repo, sha)
 
     for item in obj.items:
-        if len(item.mode) == 5:
-            type = item.mode[0:1]
-        else:
-            type = item.mode[0:2]
+        
+        item.mode.rjust(6, b'0') # pad with leading zeros if len = 5
+        type = item.mode[0:2]
+
 
         match type:
             case b"04":
@@ -102,3 +102,5 @@ def ls_tree(repo: "GitRepository", ref: str, recursive: Optional[bool] = None, p
             )
         else:
             ls_tree(repo, item.sha, recursive, os.path.join(prefix, item.path))
+
+print(b'140000'.rjust(6, b'0'))
