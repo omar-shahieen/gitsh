@@ -72,13 +72,13 @@ def repo_create(path: str) -> GitRepository:
     assert repo_dir(repo, "refs", "tags", mkdir=True)
     assert repo_dir(repo, "refs", "heads", mkdir=True)
 
-    with open(repo_file(repo, "description"), "w") as f:
+    with open(repo_file(repo, "description"), "w",encoding='utf-8',errors="ignore") as f:
         f.write("Unnamed repository; edit this file 'description' to name the repository.\n")
 
-    with open(repo_file(repo, "HEAD"), "w") as f:
+    with open(repo_file(repo, "HEAD"), "w",encoding='utf-8',errors="ignore") as f:
         f.write("ref: refs/heads/master\n")
 
-    with open(repo_file(repo, "config"), "w") as f:
+    with open(repo_file(repo, "config"), "w",encoding='utf-8',errors="ignore") as f:
         config = _repo_default_config()
         config.write(f)
 

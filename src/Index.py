@@ -4,6 +4,7 @@ from typing import Dict, List
 from objects import GitBlob
 from storage import object_write
 from storage.repository import GitRepository ,repo_file
+import fnmatch
 
 class GitIndexEntry:
     """Represents a single file entry in the index (staging area)."""
@@ -56,6 +57,48 @@ class GitIndex:
         """
         self.repo = repo
         self.entries: Dict[str, GitIndexEntry] = {}
+        self.ignore_patterns: List[str] = []
+        self.load_ignore_patterns()
+    
+    def load_ignore_patterns(self) -> None:
+        """Load ignore patterns from .gitshignore file."""
+        ignore_path = os.path.join(self.repo.worktree, ".gitshignore")
+        print(ignore_path)
+        if os.path.exists(ignore_path):
+            with open(ignore_path, 'r', encoding='utf-16') as f:
+                self.ignore_patterns = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+        else:
+            self.ignore_patterns = []
+    
+    def is_ignored(self, path: str) -> bool:
+        """Check if a path matches any ignore pattern.
+        
+        Args:
+            path: Relative path from worktree.
+        
+        Returns:
+            True if the path should be ignored.
+        """
+            
+        path = path.replace(os.sep, '/')
+        
+        for pattern in self.ignore_patterns:
+            pattern = pattern.strip()
+            
+            # Match full path patterns
+            if fnmatch.fnmatch(path, pattern):
+                return True
+            
+            # Match directory patterns (e.g., __pycache__)
+            if fnmatch.fnmatch(os.path.basename(path), pattern):
+                return True
+            
+            # Match nested patterns (e.g., **/node_modules)
+            if '**' in pattern:
+                simplified = pattern.replace('**/', '')
+                if fnmatch.fnmatch(path, simplified):
+                    return True
+        return False
     
     def load(self) -> None:
         """Load index from .gitsh/index file."""
@@ -65,7 +108,7 @@ class GitIndex:
             self.entries = {}
             return
         
-        with open(index_path, 'r') as f:
+        with open(index_path, 'r',encoding='utf-8',errors="ignore") as f:
             try:
                 data = json.load(f)
                 self.entries = {
@@ -83,7 +126,7 @@ class GitIndex:
             raise Exception("Failed to create index path")
         
         data = [entry.to_dict() for entry in self.entries.values()]
-        with open(index_path, 'w') as f:
+        with open(index_path, 'w',encoding='utf-8',errors="ignore") as f:
             json.dump(data, f, indent=2)
     
     def add(self, filepath: str) -> None:
@@ -105,8 +148,14 @@ class GitIndex:
         if not os.path.isfile(filepath):
             raise Exception(f"Not a file: {filepath}")
         
+        #  Check if ignored BEFORE adding
+        rel_path = os.path.relpath(filepath, self.repo.worktree)
+        if self.is_ignored(rel_path):
+            raise Exception(f"File is ignored: {rel_path}")
+        
+        
         # Store the file content as a real Git blob object
-        with open(filepath, "rb") as fd:
+        with open(filepath, "rb" ) as fd:
             blob = GitBlob(fd.read())
         sha = object_write(blob, self.repo)
         
@@ -157,16 +206,20 @@ class GitIndex:
         # Check for files in worktree not in index
         for root, dirs, files in os.walk(self.repo.worktree):
             # Skip .gitsh directory
+            
             if ".gitsh" in dirs:
                 dirs.remove(".gitsh")
             if "__pycache__" in dirs:
                 dirs.remove("__pycache__")
             
+            # Filter out ignored directories
+            dirs[:] = [d for d in dirs if not self.is_ignored(os.path.relpath(os.path.join(root, d), self.repo.worktree))]
+            
             for file in files:
                 filepath = os.path.join(root, file)
                 rel_path = os.path.relpath(filepath, self.repo.worktree)
                 
-                if rel_path not in self.entries:
+                if not self.is_ignored(rel_path) and rel_path not in self.entries:
                     modified.append(rel_path)
         
         # Check for files in index but not in worktree

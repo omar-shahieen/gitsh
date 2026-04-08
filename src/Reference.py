@@ -17,7 +17,7 @@ def ref_resolve(repo: GitRepository, ref: str) -> Optional[str]:
     if not os.path.isfile(path):
         return None
     
-    with open(path,'r') as fp:
+    with open(path,'r',encoding='utf-8',errors="ignore") as fp:
         data = fp.read()[:-1] # drop \n
         
     if data.startswith("ref: "):
@@ -62,7 +62,7 @@ def ref_create(repo: GitRepository, ref_name: str, sha: str) -> None:
         sha: The SHA hash to point to.
     """
     ref_path = repo_file(repo, ref_name, mkdir=True)
-    with open(ref_path, 'w') as f:
+    with open(ref_path, 'w',encoding='utf-8',errors="ignore") as f:
         f.write(sha + '\n')
 
 
@@ -80,7 +80,7 @@ def branch_get_active(repo: GitRepository) -> Optional[str]:
     if not os.path.isfile(head_path):
         return None
     
-    with open(head_path, 'r') as f:
+    with open(head_path, 'r',encoding='utf-8',errors="ignore") as f:
         data = f.read().strip()
     
     if data.startswith("ref: refs/heads/"):

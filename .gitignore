@@ -207,4 +207,6 @@ marimo/_lsp/
 __marimo__/
 
 
-.gitsh
+**/.gitsh/
+**/gitsh.egg-info/
+**/.gitshignore

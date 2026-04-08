@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 
 from storage import repo_find, repo_create, repo_file, object_write, object_find, object_read, compute_file_hash
-from objects import GitBlob, GitCommit, GitTree
+from objects import  GitCommit, GitTree
 from objects import GitTreeLeaf
 from Index import index_load, index_save
 from Reference import ref_resolve, ref_list, ref_create, branch_get_active, branch_create
@@ -79,7 +79,6 @@ def cmd_status(args):
             if head_sha:
                 print(f"HEAD detached at {head_sha[:7]}")
         
-        print()
         
         # Changes staged
         if status['staged']:

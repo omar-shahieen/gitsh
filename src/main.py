@@ -5,7 +5,9 @@ Entry point for the CLI
 """
 
 from cli import main
-
+import sys
+from importlib import reload
+reload(sys)
 if __name__ == "__main__":
     main()
 

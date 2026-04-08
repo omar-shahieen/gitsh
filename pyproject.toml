@@ -1,0 +1,9 @@
+[project]
+name = "gitsh"
+version = "1.0.0"
+description = "Git-like tool"
+authors = [{ name="Omar Moahmed|Mohamed Ashraf" }]
+dependencies = []
+
+[project.scripts]
+gitsh = "cli:main"
