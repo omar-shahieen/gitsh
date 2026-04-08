@@ -137,7 +137,8 @@ def object_find(repo: GitRepository, name: str, fmt: Optional[bytes] = None, fol
         raise Exception(f"No such reference {name}.")
     
     if len(sha_candidates) > 1 :
-        raise Exception(f"Ambiguous reference {name}: Candidates are:\n - {'\n - '.join(sha_candidates)}.")
+        candidates_str = '\n - '.join(sha_candidates)
+        raise Exception(f"Ambiguous reference {name}: Candidates are:\n - {candidates_str}.")
     
     sha =sha_candidates[0]
     
@@ -173,7 +174,7 @@ def object_resolve(repo: GitRepository, name: str) -> Optional[List[str]]:
     Returns:
         List of candidate SHAs, or None.
     """
-    from reference import ref_resolve
+    from Reference import ref_resolve
 
     candidates= list()
     hashRE = re.compile(r"^[0-9A-Fa-f]{4,40}$")

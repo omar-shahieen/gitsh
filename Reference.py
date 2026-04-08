@@ -50,5 +50,82 @@ def ref_list(repo: GitRepository, current_path: Optional[str] = None) -> Dict[st
         else :
             references [entry_name] = ref_resolve(repo,entry_path)
             
-    return references 
+    return references
+
+
+def ref_create(repo: GitRepository, ref_name: str, sha: str) -> None:
+    """Create or update a reference.
+
+    Args:
+        repo: The Git repository instance.
+        ref_name: Name of the reference (e.g., 'refs/heads/main').
+        sha: The SHA hash to point to.
+    """
+    ref_path = repo_file(repo, ref_name, mkdir=True)
+    with open(ref_path, 'w') as f:
+        f.write(sha + '\n')
+
+
+def branch_get_active(repo: GitRepository) -> Optional[str]:
+    """Get the name of the active branch.
+
+    Args:
+        repo: The Git repository instance.
+
+    Returns:
+        The branch name or None if in detached HEAD state.
+    """
+    head_path = repo_file(repo, "HEAD")
+    
+    if not os.path.isfile(head_path):
+        return None
+    
+    with open(head_path, 'r') as f:
+        data = f.read().strip()
+    
+    if data.startswith("ref: refs/heads/"):
+        return data[16:]  # Extract branch name
+    
+    return None
+
+
+def branch_create(repo: GitRepository, branch_name: str, target_sha: str) -> None:
+    """Create a new branch.
+
+    Args:
+        repo: The Git repository instance.
+        branch_name: Name of the new branch.
+        target_sha: SHA to point the branch to (usually HEAD).
+    """
+    ref_create(repo, f"refs/heads/{branch_name}", target_sha)
+
+
+def show_ref(repo: GitRepository, refs: Dict[str, Any], include_hash: bool = True, current_prefix: str = "") -> None:
+    """Display references in a formatted way.
+
+    Args:
+        repo: The Git repository instance.
+        refs: The dictionary of references.
+        include_hash: Whether to include SHA hashes in output.
+        current_prefix: The current prefix for nested references.
+    """
+    # add "/" if we are not at the root level
+    if current_prefix : 
+        current_prefix = current_prefix + "/"
+        
+    for ref_name, ref_value in refs.items():
+        # this is a file (final ref -> sha string)
+        if isinstance(ref_value , str) :
+            if include_hash:
+                print(f"{ref_value} {current_prefix}{ref_name}")
+            else :
+                print(f"{current_prefix}{ref_name}")
+                
+        else :  # this is directory (nested ref)
+            show_ref(
+                repo,
+                ref_value,
+                include_hash=include_hash,
+                current_prefix=f"{current_prefix}{ref_name}"
+            ) 
 

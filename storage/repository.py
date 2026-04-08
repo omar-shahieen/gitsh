@@ -150,7 +150,7 @@ def repo_find(path: str = ".", required: bool = True) -> Optional[GitRepository]
     """
     path = os.path.realpath(path)
 
-    if os.path.isdir(os.path.join(path, ".git")):
+    if os.path.isdir(os.path.join(path, ".gitsh")):
         return GitRepository(path)
 
     parent = os.path.realpath(os.path.join(path, ".."))

@@ -1,7 +1,8 @@
 import json
 import os
 from typing import Dict, List
-from storage import compute_file_hash
+from objects import GitBlob
+from storage import object_write
 from storage.repository import GitRepository ,repo_file
 
 class GitIndexEntry:
@@ -104,8 +105,10 @@ class GitIndex:
         if not os.path.isfile(filepath):
             raise Exception(f"Not a file: {filepath}")
         
-        # Compute hash of file content
-        sha = compute_file_hash(filepath, algorithm='sha1')
+        # Store the file content as a real Git blob object
+        with open(filepath, "rb") as fd:
+            blob = GitBlob(fd.read())
+        sha = object_write(blob, self.repo)
         
         # Get relative path from worktree
         rel_path = os.path.relpath(filepath, self.repo.worktree)
