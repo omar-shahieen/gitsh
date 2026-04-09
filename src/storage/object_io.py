@@ -214,7 +214,7 @@ def object_resolve(repo: GitRepository, name: str) -> Optional[List[str]]:
         candidates.append(as_branch)
         
     # is there remote branches 
-    as_remote_branch = ref_resolve(repo , "repo/remotes/" + name)
+    as_remote_branch = ref_resolve(repo , "refs/remotes/" + name)
     if as_remote_branch:
         candidates.append(as_remote_branch)
         
